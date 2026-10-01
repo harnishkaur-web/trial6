@@ -1,6 +1,17 @@
-/* ================= PAGE NAV ================= */
-var TOTAL = 5;
+/* ================= SLIDE NAV =================
+   Round 2: every slide fits one screen. 10 slides, grouped under the
+   5 journey steps:
+   Brief (1 Brief, 2 How this bot works, 3 Never type these)
+   Why it matters (4 Why practice this, 5 Why this bot is gated)
+   Meet the bot (6 Meet SwiftChat, 7 Pick your setting)
+   Chat (8 SwiftChat — one exchange at a time)
+   Result (9 Result, 10 Your 4-step check)
+*/
+var TOTAL = 10;
 var current = 0;
+var PICK_SLIDE = 6;
+var CHAT_SLIDE = 7;
+var RESULT_SLIDE = 8;
 var pillIcons = [
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 0 0-14.7-4.7M4 14a8 8 0 0 0 14.7 4.7"/></svg>',
@@ -9,18 +20,23 @@ var pillIcons = [
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
 ];
 var pillLabels = ["Brief","Why it matters","Meet the bot","Chat","Result"];
+var pillSlides = [[0,1,2],[3,4],[5,6],[7],[8,9]];
 
 function buildPills(){
   var bar = document.getElementById('journeyNav');
   bar.innerHTML = '<div class="journey-line"></div>';
-  for(var i=0;i<TOTAL;i++){
+  for(var i=0;i<pillLabels.length;i++){
     var p = document.createElement('div');
     p.className = 'journey-node';
     p.setAttribute('data-i', i);
-    p.onclick = (function(idx){ return function(){ current = idx; render(); }; })(i);
+    p.setAttribute('title', pillLabels[i]);
+    p.onclick = (function(idx){ return function(){ current = pillSlides[idx][0]; render(); }; })(i);
     p.innerHTML = '<div class="journey-circle">'+pillIcons[i]+'</div><span class="journey-label">' + pillLabels[i] + '</span>';
     bar.appendChild(p);
   }
+  var dots = document.getElementById('pageDots');
+  dots.innerHTML = '';
+  for(var d=0; d<TOTAL; d++){ dots.appendChild(document.createElement('span')); }
 }
 
 function render(){
@@ -28,15 +44,19 @@ function render(){
     p.classList.toggle('active', parseInt(p.getAttribute('data-page')) === current);
   });
   document.querySelectorAll('.journey-node').forEach(function(p){
-    var i = parseInt(p.getAttribute('data-i'));
-    p.classList.toggle('active', i === current);
-    p.classList.toggle('done', i < current);
+    var group = pillSlides[parseInt(p.getAttribute('data-i'))];
+    p.classList.toggle('active', group.indexOf(current) !== -1);
+    p.classList.toggle('done', group[group.length-1] < current);
+  });
+  document.querySelectorAll('#pageDots span').forEach(function(s, i){
+    s.className = i < current ? 'is-done' : (i === current ? 'is-current' : '');
   });
   document.getElementById('pageCount').textContent = (current+1) + ' / ' + TOTAL;
   document.getElementById('backBtn').disabled = (current === 0);
   document.getElementById('nextBtn').disabled = (current === TOTAL-1);
-  if(current === 3 && !chatStarted && currentLane){ launchChat(); }
-  window.scrollTo({top:0, behavior:'smooth'});
+  // Only one amber action per slide: the Pick-your-setting slide owns its Start button, and the last slide has no Next.
+  document.getElementById('nextBtn').classList.toggle('is-quiet', current === PICK_SLIDE || current === TOTAL-1);
+  if(current === CHAT_SLIDE && !chatStarted && currentLane){ launchChat(); }
 }
 
 function changePage(delta){
@@ -171,10 +191,14 @@ var laneData = {
 /* ================= STATE ================= */
 var currentLane = null;
 var chatStarted = false;
+var chatDone = false;
+var awaiting = false;        // a question (with option chips) is open
 var clusterIndex = 0;
 var attemptIndex = 0;
 var clusterResults = [];
 var idleTimer = null;
+var hintEl = null;
+var transcript = [];         // full conversation, kept in memory (the screen shows one exchange)
 var body = document.getElementById('phoneBody');
 
 document.getElementById('laneSelect').addEventListener('change', function(){
@@ -183,7 +207,7 @@ document.getElementById('laneSelect').addEventListener('change', function(){
 });
 
 document.getElementById('startBotBtn').addEventListener('click', function(){
-  current = 3;
+  current = CHAT_SLIDE;
   render();
 });
 
@@ -206,29 +230,41 @@ function updateClusterProgress(){
   for(var i=0;i<4;i++){
     var d = document.getElementById('cdot-'+i);
     d.className = 'cdot';
-    if(i === clusterIndex) d.classList.add('active');
+    if(i === clusterIndex && !chatDone) d.classList.add('active');
     if(clusterResults[i] === 'pass') d.classList.add('pass');
     if(clusterResults[i] === 'fail') d.classList.add('fail');
   }
 }
 
-function scrollBody(){ body.scrollTop = body.scrollHeight; }
+function setInputText(t){ document.querySelector('.fake-input').textContent = t; }
+
+function plain(html){ var d = document.createElement('div'); d.innerHTML = html; return d.textContent.trim(); }
+function log(who, html){ transcript.push({who: who, text: plain(html)}); }
+window.getPracticeBotTranscript = function(){ return transcript.slice(); };
+
+/* One exchange on screen at a time: each new turn replaces the last. */
+function newTurn(){
+  body.innerHTML = '';
+  hintEl = null;
+  currentChipRow = null;
+}
 
 function addPBot(html, kind){
   var msg = document.createElement('div');
   msg.className = 'pmsg bot';
   msg.innerHTML = '<div class="pavatar">'+ICON_BOT+'</div><div class="pbubble'+(kind?' k-'+kind:'')+'">'+html+'</div>';
   body.appendChild(msg);
-  scrollBody();
+  log('SwiftChat', html);
   return msg;
 }
 
-function addPUser(html){
-  var msg = document.createElement('div');
-  msg.className = 'pmsg user';
-  msg.innerHTML = '<div class="pavatar">'+ICON_USER+'</div><div class="pbubble">'+html+'</div>';
-  body.appendChild(msg);
-  scrollBody();
+/* The learner's previous reply stays as a small line at the top of the turn. */
+function addPrevReply(html){
+  var line = document.createElement('div');
+  line.className = 'prev-reply';
+  line.innerHTML = '<span class="prev-who">You</span><span class="prev-text">'+html+'</span>';
+  body.appendChild(line);
+  log('You', html);
 }
 
 function addTyping(){
@@ -237,7 +273,6 @@ function addTyping(){
   msg.id = 'typingMsg';
   msg.innerHTML = '<div class="pavatar">'+ICON_BOT+'</div><div class="ptyping"><span></span><span></span><span></span></div>';
   body.appendChild(msg);
-  scrollBody();
 }
 function removeTyping(){
   var t = document.getElementById('typingMsg');
@@ -245,11 +280,12 @@ function removeTyping(){
 }
 
 var currentChipRow = null;
-function addChips(options, onPick){
+function addChips(options, onPick, extraClass){
   var row = document.createElement('div');
-  row.className = 'chip-row';
+  row.className = 'chip-row' + (extraClass ? ' ' + extraClass : '');
   options.forEach(function(opt, idx){
     var btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'quick-chip';
     btn.textContent = opt;
     btn.onclick = function(){
@@ -261,21 +297,30 @@ function addChips(options, onPick){
   });
   body.appendChild(row);
   currentChipRow = row;
-  scrollBody();
   return row;
+}
+
+/* After feedback the learner taps Continue, so the feedback stays readable
+   instead of being replaced straight away. */
+function addContinue(onGo){
+  addChips(['Continue'], function(){ onGo(); }, 'continue-row');
 }
 
 /* ================= LAUNCH / CLUSTER FLOW ================= */
 function launchChat(){
   chatStarted = true;
+  chatDone = false;
   clusterIndex = 0;
   attemptIndex = 0;
   clusterResults = [null,null,null,null];
-  body.innerHTML = '';
+  newTurn();
+  setInputText('Choose an option above…');
   updateClusterProgress();
 
+  var toast = document.getElementById('phoneToast');
+  toast.style.display = '';
+  toast.textContent = 'Connecting to SwiftChat…';
   setTimeout(function(){
-    var toast = document.getElementById('phoneToast');
     toast.textContent = 'Connected';
     setTimeout(function(){ toast.style.display='none'; }, 1200);
   }, 900);
@@ -289,38 +334,37 @@ function launchChat(){
 }
 
 function presentCluster(){
-  var lane = laneData[currentLane];
-  var cluster = lane.clusters[clusterIndex];
   attemptIndex = 0;
   updateClusterProgress();
   addTyping();
   setTimeout(function(){
     removeTyping();
-    addPBot('<b>'+cluster.title+'</b>');
-    setTimeout(function(){ presentScenario(); }, 500);
+    presentScenario(true);
   }, 700);
 }
 
-function presentScenario(){
-  var lane = laneData[currentLane];
-  var cluster = lane.clusters[clusterIndex];
+/* withTitle: the round title heads the scenario bubble (was its own bubble). */
+function presentScenario(withTitle){
+  var cluster = laneData[currentLane].clusters[clusterIndex];
   var sc = cluster.scenarios[attemptIndex];
   addTyping();
   setTimeout(function(){
     removeTyping();
-    addPBot(sc.text);
+    addPBot((withTitle ? '<b>'+cluster.title+'</b>' : '') + sc.text);
     setTimeout(function(){
       addPBot(sc.q);
       addChips(sc.options, function(pickedIdx){ handleAnswer(pickedIdx); });
+      awaiting = true;
     }, 500);
   }, 700);
 }
 
 function handleAnswer(pickedIdx){
-  var lane = laneData[currentLane];
-  var cluster = lane.clusters[clusterIndex];
+  awaiting = false;
+  var cluster = laneData[currentLane].clusters[clusterIndex];
   var sc = cluster.scenarios[attemptIndex];
-  addPUser(sc.options[pickedIdx]);
+  newTurn();
+  addPrevReply(sc.options[pickedIdx]);
 
   var isRight = (pickedIdx === sc.correct);
   addTyping();
@@ -330,59 +374,79 @@ function handleAnswer(pickedIdx){
       addPBot(ICON_CHECK+' '+sc.feedback[0], 'good');
       clusterResults[clusterIndex] = 'pass';
       updateClusterProgress();
-      setTimeout(advanceCluster, 900);
+      addContinue(advanceCluster);
     } else {
       addPBot(ICON_X+' '+sc.feedback[1], 'soft');
       if(attemptIndex < cluster.scenarios.length-1){
         setTimeout(function(){
           addPBot("Let's try one more like this, with a new example.", 'info');
-          attemptIndex++;
-          setTimeout(presentScenario, 600);
+          addContinue(function(){
+            attemptIndex++;
+            newTurn();
+            presentScenario(false);
+          });
         }, 800);
       } else {
         clusterResults[clusterIndex] = 'fail';
         updateClusterProgress();
         setTimeout(function(){
           addPBot("That's okay, this round needs another round of practice. Let's move on for now, you can come back to it.", 'soft');
-          setTimeout(advanceCluster, 900);
+          addContinue(advanceCluster);
         }, 800);
       }
     }
   }, 700);
 }
 
+/* Next round still to do. After a Retry this skips rounds already cleared
+   (previously a retry replayed every later round, even passed ones). */
 function advanceCluster(){
-  clusterIndex++;
-  if(clusterIndex >= 4){
+  var next = -1;
+  for(var j = clusterIndex + 1; j < 4; j++){
+    if(clusterResults[j] !== 'pass'){ next = j; break; }
+  }
+  newTurn();
+  if(next === -1){
     finishChat();
   } else {
+    clusterIndex = next;
     presentCluster();
   }
 }
 
 function finishChat(){
+  chatDone = true;
+  awaiting = false;
   clearTimeout(idleTimer);
+  updateClusterProgress();
   addTyping();
   setTimeout(function(){
     removeTyping();
     var passed = clusterResults.filter(function(r){return r==='pass';}).length;
     addPBot("You've finished all 4 rounds, "+passed+" out of 4 cleared. Check your full result on the next page.", 'info');
-    document.querySelector('.fake-input').textContent = 'Chat complete';
+    setInputText('Chat complete');
   }, 700);
   updateGateResult();
 }
 
 /* ================= HELP / SKIP ================= */
 function showHint(){
-  if(!chatStarted || clusterIndex >= 4) return;
-  var lane = laneData[currentLane];
-  var cluster = lane.clusters[clusterIndex];
-  var sc = cluster.scenarios[attemptIndex];
-  addPBot('<b>Hint:</b> '+sc.hint, 'help');
+  if(!chatStarted || chatDone || !awaiting) return;
+  var sc = laneData[currentLane].clusters[clusterIndex].scenarios[attemptIndex];
+  var html = '<b>Hint:</b> '+sc.hint;
+  // One hint bubble per turn, shown above the options (tapping again does not stack more).
+  if(!hintEl){
+    hintEl = document.createElement('div');
+    hintEl.className = 'pmsg bot';
+    hintEl.innerHTML = '<div class="pavatar">'+ICON_BOT+'</div><div class="pbubble k-help"></div>';
+    body.insertBefore(hintEl, currentChipRow);
+  }
+  hintEl.querySelector('.pbubble').innerHTML = html;
+  log('SwiftChat', html);
 }
 
 function openSkipPanel(){
-  if(!chatStarted || clusterIndex >= 4) return;
+  if(!chatStarted || chatDone || !awaiting) return;
   document.getElementById('skipPanel').classList.add('show');
 }
 function closeSkipPanel(){
@@ -395,20 +459,28 @@ function confirmSkip(){
   if(!reason) return;
   var reasonLabel = sel.options[sel.selectedIndex].text;
   closeSkipPanel();
-  if(currentChipRow){ currentChipRow.querySelectorAll('button').forEach(function(b){ b.disabled = true; }); }
-  addPUser('Skip this round: '+reasonLabel);
+  awaiting = false;
+  newTurn();
+  addPrevReply('Skip this round: '+reasonLabel);
   clusterResults[clusterIndex] = 'fail';
   updateClusterProgress();
   addPBot("No problem, noted. You can come back to this round later from your result page.", 'info');
-  setTimeout(advanceCluster, 900);
+  addContinue(advanceCluster);
 }
 
 /* ================= IDLE / INACTIVE SESSION ================= */
+/* The nudge shows in the phone's status strip so it never pushes the turn off screen. */
 function resetIdle(){
   clearTimeout(idleTimer);
-  if(clusterIndex >= 4) return;
+  var toast = document.getElementById('phoneToast');
+  if(toast.classList.contains('is-idle')){ toast.classList.remove('is-idle'); toast.style.display = 'none'; }
+  if(chatDone || !chatStarted) return;
   idleTimer = setTimeout(function(){
-    addPBot("Still there? Take your time, tap an option whenever you're ready.", 'info');
+    var msg = "Still there? Take your time, tap an option whenever you're ready.";
+    toast.textContent = msg;
+    toast.classList.add('is-idle');
+    toast.style.display = '';
+    log('SwiftChat', msg);
   }, 20000);
 }
 
@@ -433,19 +505,24 @@ function updateGateResult(){
     var st = clusterResults[i];
     row.className = 'cs-row ' + (st === 'pass' ? 'pass' : 'fail');
     row.innerHTML = (st === 'pass' ? ICON_CHECK : ICON_X) + '<span>'+c.title+'</span>' +
-      (st !== 'pass' ? '<button onclick="retryCluster('+i+')">Retry</button>' : '');
+      (st !== 'pass' ? '<button type="button" onclick="retryCluster('+i+')">Retry</button>' : '');
     list.appendChild(row);
   });
 }
 
 function retryCluster(i){
-  current = 3;
+  current = CHAT_SLIDE;
   clusterIndex = i;
   clusterResults[i] = null;
+  chatDone = false;
+  // Bug fix: the input placeholder used to stay on "Chat complete" after Retry.
+  setInputText('Choose an option above…');
   render();
   updateClusterProgress();
+  newTurn();
   addPBot("Let's go back to: <b>"+laneData[currentLane].clusters[i].title+"</b>", 'info');
-  setTimeout(function(){ attemptIndex = 0; presentScenario(); }, 600);
+  setTimeout(function(){ attemptIndex = 0; presentScenario(false); }, 600);
+  resetIdle();
 }
 
 /* ================= INIT ================= */
