@@ -560,3 +560,82 @@ select option{background:#0E1A4F;color:var(--text)}
   .rule-card,.stakes-card{padding:12px 14px}
   .lead{margin-bottom:0}
 }
+
+/* ESL upgrade (game-specific) */
+/* "Your task." line written in the HTML: same look as the shared .saa-do line */
+.do{display:block;margin:10px 0;padding:12px 16px;border-radius:14px;background:rgba(91,118,255,.16);border:1px solid rgba(91,118,255,.6);color:#F6F4EF;font-weight:600;line-height:1.45;text-align:left;font-size:inherit}
+.do b{color:#8FA0FF;font-weight:700;margin-right:.3em}
+.chat-side .lead{margin:0 0 6px}
+
+/* Game 16 designer assets (Oct 2026) */
+/* bot avatar: the branded SwiftChat logo, the same artwork Practice Bot - Framing and Refining uses */
+.intro-icon.g16-intro-avatar{width:96px;height:96px;border-radius:50%;background:none;border:0}
+.intro-icon.g16-intro-avatar img{width:96px;height:96px;display:block}
+.g16-h-av{display:flex;align-items:center;gap:14px}
+.g16-h-avatar{width:48px;height:48px;flex:none;display:block}
+.phone-avatar.g16-phone-avatar{width:40px;height:40px;background:none;border:0}
+.phone-avatar.g16-phone-avatar img{width:40px;height:40px;display:block;border-radius:50%}
+.pmsg.bot .pavatar{background:none;border:0;width:24px;height:24px}
+.pavatar .g16-pavatar{width:24px;height:24px;display:block;border-radius:50%}
+/* line icons (ivory, for the navy game) */
+.g16-ic{width:24px;height:24px;flex:none;display:block}
+.saa-kit .saa-front:has(.g16-ic){display:grid;grid-template-columns:24px 1fr;column-gap:12px;row-gap:4px;align-content:center;justify-items:start;align-items:center}
+.saa-kit .saa-front .g16-ic{grid-column:1;grid-row:1}
+.saa-kit .saa-front .g16-front-t{grid-column:2;grid-row:1;text-align:left}
+.saa-kit .saa-front:has(.g16-ic)::after{grid-column:2;grid-row:2}
+.saa-kit .saa-chip:has(.g16-ic){display:inline-flex;align-items:center;gap:8px}
+.saa-kit .saa-chip .g16-ic{width:22px;height:22px}
+.saa-kit .saa-steps > li:has(.g16-ic){gap:9px}
+.saa-kit .saa-steps > li .g16-ic{width:20px;height:20px}
+/* setting picture beside the dropdown */
+.g16-lane-ico{width:32px;height:32px;flex:none;display:block}
+.g16-lane-ico[hidden]{display:none}
+/* gate picture: only after the question is answered, so it never gives the answer away */
+.g16-gate{display:none;margin:clamp(8px,calc(1.6vh / var(--z,1)),14px) 0 0}
+.saa-kit.is-done + .g16-gate{display:block}
+.g16-gate img{display:block;width:100%;max-width:420px;height:auto;max-height:calc(22vh / var(--z,1));object-fit:contain;object-position:left center}
+@media (max-width:480px){
+  .intro-icon.g16-intro-avatar, .intro-icon.g16-intro-avatar img{width:64px;height:64px}
+  .g16-h-avatar{width:40px;height:40px}
+  .g16-h-av{gap:10px}
+  .saa-kit.is-done + .g16-gate{display:none}
+}
+
+/* ===== QA fixes (4 Oct 2026) ===== */
+/* The chat scrolls inside the phone, and the script keeps the newest message and its answers in view. */
+.phone-body{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.phone-body > *{flex:none}
+/* wide screens: title column + phone column, so the phone gets the full slide height */
+@media (min-width:900px){
+  html.saa-skin .page-chat.active > .saa-inner,
+  html.saa-skin .page-chat.active > .saa-inner.saa-split{display:grid !important;grid-template-columns:minmax(0,1fr) minmax(360px,520px);column-gap:32px;align-items:stretch;flex:1 1 auto;min-height:0;width:100%}
+  html.saa-skin .page-chat.active > .saa-inner > *{min-height:0}
+  html.saa-skin .page-chat.active .chat-side{align-self:center}
+  html.saa-skin .page-chat.active .phone-wrap{height:auto;min-height:300px}
+}
+/* phones and tablets: the phone keeps a usable height; the slide scrolls if it must */
+@media (max-width:899px){
+  .page-chat .phone-wrap{flex:1 0 auto;min-height:300px}
+  .page-chat .phone-frame-outer{min-height:300px}
+}
+/* the "finish first" note under the round dots */
+.g16-gatemsg{margin:6px 0 0;padding:8px 12px;border-radius:12px;background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.45);color:#FFD9A0;font-size:13.5px;font-weight:600;line-height:1.4}
+.g16-gatemsg[hidden]{display:none}
+/* phone landscape: let everything stack and scroll instead of overlapping */
+@media (max-height:480px) and (min-width:600px){
+  .page-chat .phone-wrap{flex:none;height:300px}
+}
+
+/* the "unsupported" icon reads as a cross (it was a plus sign) */
+img[src$="icon-unsupported.webp"]{transform:rotate(45deg);}
+
+/* phone landscape (QA fix): the whole page scrolls as one column instead of overlapping; the footer stays at the bottom */
+@media (orientation:landscape) and (max-height:480px) and (min-width:701px){
+  html{height:auto !important;overflow-y:auto !important;overflow-x:hidden !important}
+  body{height:auto !important;overflow:visible !important}
+  html body .app{height:auto !important;min-height:100dvh;overflow:visible !important}
+  html.saa-skin body .app > :is(main,.stage,.slides), html body .app > :is(main,.stage,.slides){flex:none !important;height:auto !important;min-height:0 !important;max-height:none !important;overflow:visible !important;padding-bottom:84px !important}
+  html body .app :is(.page.active,.slide.active,.saa-cur){flex:none !important;height:auto !important;min-height:0 !important;max-height:none !important;overflow:visible !important}
+  html body .app :is(.card,.saa-surface,.saa-split,.saa-inner){height:auto !important;max-height:none !important}
+  html body .app > :is(footer,nav.deck-foot,.slide-footer,.nav-row){position:sticky !important;bottom:0 !important;z-index:20 !important;background:linear-gradient(180deg,rgba(8,13,40,0) 0,rgba(8,13,40,.92) 14px,#080D28 100%);padding-top:10px}
+}
